@@ -10,6 +10,24 @@ JFImgur.Constants = JFImgur.Constants or {}
 
 JFImgur.__index = JFImgur
 
+local function CheckExist(sImageName, sImageLink)
+   
+    if not isstring(sImageName) then
+        return false, error("sImageName must be a string")
+    end
+
+    if not isstring(sImageLink) then
+        return false, error("sImageLink must be a string")
+    end
+
+	for i, t in ipairs(JFImgur.ImgursRegistered) do
+		if t.sImageName == sImageName and t.sImageLink == sImageLink then return true, i end
+	end
+
+	return false
+ 
+end
+
 -- Create a new imgur image
 function JFImgur:Register(sImageName, sImageLink)
 
@@ -20,29 +38,31 @@ function JFImgur:Register(sImageName, sImageLink)
     if not isstring(sImageLink) then
         return false, error("sImageLink must be a string")
     end
-
-    if JFImgur.ImgursRegistered[sImageName] then return end
+	
+    local bExist, iIndex = CheckExist(sImageName, sImageLink)
+    if bExist then table.remove(JFImgur.ImgursRegistered, iIndex) end
 
     local sImageID = sImageLink:gsub("https://i.imgur.com/", ""):gsub(".jpeg", ".jpg")
     local sURL = ("https://i.imgur.com/%s"):format(sImageID)
 
-    local sFileName = ("%s%s"):format(sImageName, sImageID:sub(#sImageID - 3, #sImageID))
-
+    local sImageNameWithoutAccents = sImageName:gsub("[éèàêÉÈ]", "")
+    local sFileName = ("%s%s"):format(sImageNameWithoutAccents, sImageID:sub(#sImageID - 3, #sImageID))
+    
     local tImgur = {
         sImageName = sImageName,
         sImageLink = sImageLink,
         sFileName = sFileName,
-        sDirectNameFile = ("../data/jf_imgur/%s"):format(sFileName),
+        sDirectNameFile = ("../data/jf_imgurs/%s"):format(sFileName),
         sURL = sURL,
         sImageID = sImageID,
         mImage = nil
     }
 
     -- Add the imgur image in the table JFImgur.ImgursRegistered
-    JFImgur.ImgursRegistered[sImageName] = tImgur
+    JFImgur.ImgursRegistered[#JFImgur.ImgursRegistered + 1] = tImgur
 
-    if CLIENT and not file.IsDir("jf_imgur", "DATA") then
-        file.CreateDir("jf_imgur")
+    if CLIENT and not file.IsDir("jf_imgurs", "DATA") then
+        file.CreateDir("jf_imgurs")
     end
 
     setmetatable(tImgur, self)
@@ -53,7 +73,8 @@ end
 -- Check if the image is already downloaded
 function JFImgur:IsDownloaded()
 
-    local bValid = file.Exists(("jf_imgur/%s"):format(self.sFileName), "DATA")
+    local bValid = file.Exists(("jf_imgurs/%s"):format(self.sFileName), "DATA")
+
     if bValid and not JFImgur.Constants[self.sImageName] then
         JFImgur.Constants[self.sImageName] = Material(self.sDirectNameFile)
     end
@@ -75,14 +96,14 @@ function JFImgur:DownloadImage()
         -- Fetch the data from the image and save it to a data file
         http.Fetch(self.sURL, function(sData)
     
-            if not file.IsDir("jf_imgur/", "DATA") then
-                file.CreateDir("jf_imgur/")
+            if not file.IsDir("jf_imgurs/", "DATA") then
+                file.CreateDir("jf_imgurs/")
             end
     
             self.sImageID = self.sImageID:lower()
             local sFileName = self.sDirectNameFile
             
-            if file.Exists(("jf_imgur/%s"):format(self.sFileName), "DATA") then
+            if file.Exists(("jf_imgurs/%s"):format(self.sFileName), "DATA") then
     
                 local mMaterial = Material(sFileName)
                 JFImgur.Constants[self.sImageName] = mMaterial
@@ -90,7 +111,7 @@ function JFImgur:DownloadImage()
     
             end
     
-            file.Write(("jf_imgur/%s"):format(self.sFileName), sData)
+            file.Write(("jf_imgurs/%s"):format(self.sFileName), sData)
             local mMaterial = Material(sFileName)
 
             JFImgur.Constants[self.sImageName] = mMaterial
@@ -107,11 +128,11 @@ end
 -- Remove all the imgur images from the data
 function JFImgur:RemoveImgurImages()
    
-	local tFiles, tFolders = file.Find("jf_imgur", "DATA")
+	local tFiles, tFolders = file.Find("jf_imgurs", "DATA")
 	for i, sFileName in ipairs(tFiles) do
         
-        if file.Exists(("jf_imgur/%s"):format(sFileName), "DATA") then
-        	file.Delete(("jf_imgur/%s"):format(sFileName), "DATA")
+        if file.Exists(("jf_imgurs/%s"):format(sFileName), "DATA") then
+        	file.Delete(("jf_imgurs/%s"):format(sFileName), "DATA")
         end
         
     end
@@ -131,28 +152,11 @@ end
 
 setmetatable(JFImgur, {__call = JFImgur.Register})
 
-local function RemakeTable(tTable)
-
-    local tNewTable = {}
-
-    for s, t in pairs(tTable) do
-        
-        tNewTable[#tNewTable + 1] = {
-            sImageName = s,
-            tImgur = t
-        }
-
-    end
-
-    return tNewTable
-
-end
-
 -- Make the player download all the imgur images registered with a delay between each image
 function JFImgur:DownloadRegisterImages(iDelay, fcCallback)
 
     iDelay = iDelay or 0.1
-    local tSeqTable = RemakeTable(JFImgur.ImgursRegistered)
+    local tSeqTable = JFImgur.ImgursRegistered
 
     local sImageName = ""
     local iIndex = 0
@@ -165,13 +169,13 @@ function JFImgur:DownloadRegisterImages(iDelay, fcCallback)
         iIndex = iIndex + 1
         local tImage = tSeqTable[iIndex]
 
-        if tImage.tImgur:IsDownloaded() then
+        if tImage:IsDownloaded() then
             if isfunction(fcCallback) then fcCallback(#tSeqTable, iIndex + 1, sImageName) end
             return
         end
 
         sImageName = tImage.sImageName
-        tImage.tImgur:DownloadImage()
+        tImage:DownloadImage()
 
         if isfunction(fcCallback) then fcCallback(#tSeqTable, iIndex, sImageName) end
 
@@ -181,6 +185,20 @@ function JFImgur:DownloadRegisterImages(iDelay, fcCallback)
 
 end
 
+local function CheckImageValid(sImageName)
+   
+    if not isstring(sImageName) then
+        return false
+   	end     
+
+    for i, t in ipairs(JFImgur.ImgursRegistered) do
+   		if t.sImageName == sImageName then return true end
+    end
+    
+    return false
+    
+end
+
 -- Get a imgur image from the constants
 function JFImgur:GetImgurImage(sImageName)
 
@@ -188,7 +206,7 @@ function JFImgur:GetImgurImage(sImageName)
         return Material("icon16/arrow_refresh.png")
     end
 
-    if not JFImgur.ImgursRegistered[sImageName] then
+    if not CheckImageValid(sImageName) then
         return Material("icon16/arrow_refresh.png")
     end
 
